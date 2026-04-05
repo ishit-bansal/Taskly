@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -63,6 +63,7 @@ function Board() {
   const [sortBy, setSortBy] = useState<SortOption>('priority');
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  const dragOriginalStatusRef = useRef<TaskStatus | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ task: Task; pos: { x: number; y: number } } | null>(null);
 
   useEffect(() => {
@@ -144,7 +145,10 @@ function Board() {
   }, [filteredTasks, sortBy]);
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
+    const taskId = event.active.id as string;
+    const task = tasks.find(t => t.id === taskId);
+    dragOriginalStatusRef.current = task?.status ?? null;
+    setActiveId(taskId);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -168,13 +172,14 @@ function Board() {
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
+    const originalStatus = dragOriginalStatusRef.current;
+    dragOriginalStatusRef.current = null;
     setActiveId(null);
+
     const { active, over } = event;
     if (!over) return;
 
     const taskId = active.id as string;
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
 
     let newStatus: TaskStatus;
     if (COLUMNS.some(c => c.id === over.id)) {
@@ -185,7 +190,7 @@ function Board() {
       newStatus = overTask.status;
     }
 
-    if (newStatus === task.status) return;
+    if (newStatus === originalStatus) return;
 
     const columnTasks = tasks
       .filter(t => t.status === newStatus && t.id !== taskId)
@@ -193,7 +198,7 @@ function Board() {
 
     const newPosition = columnTasks.length;
 
-    if (newStatus === 'done' && task.status !== 'done') celebrateTaskCompletion();
+    if (newStatus === 'done' && originalStatus !== 'done') celebrateTaskCompletion();
 
     try {
       await moveTask(taskId, newStatus, newPosition);
